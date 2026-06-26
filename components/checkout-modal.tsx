@@ -1,21 +1,58 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, ChevronLeft, CreditCard } from 'lucide-react'
+import { ChevronLeft, CreditCard } from 'lucide-react'
 import { formatBRL, type PaymentMethod } from '@/lib/types'
 import { selectTotalPrice, useStore } from '@/lib/store'
 import { vibrate } from '@/lib/haptics'
+
+function vibratePattern(pattern: number[]) {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    navigator.vibrate(pattern)
+  }
+}
 import { Drawer } from 'vaul'
 
 type Step = 'select' | 'dinheiro' | 'cartao' | 'done'
+
+// ── Dó-Mi-Sol arpeggio check sound ──────────
+function playCheckSound() {
+  if (typeof window === 'undefined') return
+  try {
+    const ctx = new AudioContext()
+    const play = (freq: number, startOffset: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startOffset)
+      // Envelope: attack 5ms, sustain, release last 30ms
+      gain.gain.setValueAtTime(0, ctx.currentTime + startOffset)
+      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + startOffset + 0.005)
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + startOffset + duration - 0.03)
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + startOffset + duration)
+      osc.start(ctx.currentTime + startOffset)
+      osc.stop(ctx.currentTime + startOffset + duration)
+    }
+    play(523, 0,    0.08)   // Dó
+    play(659, 0.06, 0.10)   // Mi
+    play(784, 0.13, 0.15)   // Sol
+    setTimeout(() => ctx.close(), 600)
+  } catch {
+    // Web Audio not available
+  }
+}
 
 export function CheckoutModal() {
   const isOpen = useStore((s) => s.isCheckoutOpen)
   const closeCheckout = useStore((s) => s.closeCheckout)
   const completeSale = useStore((s) => s.completeSale)
+  const lastSaleWarnings = useStore((s) => s.lastSaleWarnings)
   const total = useStore(selectTotalPrice)
   const [step, setStep] = useState<Step>('select')
   const [receivedString, setReceivedString] = useState('')
+  const [saleTime, setSaleTime] = useState('')
 
   useEffect(() => {
     if (!isOpen) {
@@ -30,11 +67,15 @@ export function CheckoutModal() {
   const change = received - total
 
   function pay(method: PaymentMethod) {
-    vibrate(20)
+    vibratePattern([40, 20, 80])
+    playCheckSound()
+    setSaleTime(
+      new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    )
     setStep('done')
     setTimeout(() => {
       completeSale(method)
-    }, 700)
+    }, 1800)
   }
 
   function handleNumberClick(num: string) {
@@ -47,30 +88,112 @@ export function CheckoutModal() {
   }
 
   return (
-    <Drawer.Root open={isOpen} onOpenChange={(o) => { if (!o) closeCheckout() }}>
+    <Drawer.Root open={isOpen} onOpenChange={(o: boolean) => { if (!o) closeCheckout() }}>
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm" onClick={closeCheckout} />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-h-[96vh] w-full max-w-sm flex-col rounded-t-[24px] bg-card outline-none sm:bottom-4 sm:rounded-[24px]">
-          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-border" />
-          
-          <div className="p-6 text-center">
-            <Drawer.Title className="sr-only">Checkout</Drawer.Title>
+        <Drawer.Overlay
+          className="fixed inset-0 z-50 backdrop-blur-sm"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={closeCheckout}
+        />
+        <Drawer.Content
+          className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-h-[96vh] w-full max-w-sm flex-col outline-none"
+          style={{
+            background: '#fff',
+            borderRadius: '20px 20px 0 0',
+            boxShadow: '0 -4px 32px rgba(29,158,117,0.12)',
+          }}
+        >
+          {/* Handle */}
+          <div
+            style={{
+              width: 36, height: 4, background: '#D1D5DB',
+              borderRadius: 2, margin: '10px auto 0', flexShrink: 0,
+            }}
+          />
 
+          <Drawer.Title className="sr-only">Checkout</Drawer.Title>
+
+          <div className="flex flex-col px-6 pb-8 pt-4">
+
+            {/* ── Done ── */}
             {step === 'done' && (
               <div className="flex flex-col items-center py-6">
-                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success text-success-foreground animate-in zoom-in">
-                  <Check className="h-8 w-8" />
-                </span>
-                <p className="mt-4 text-lg font-bold text-foreground">
-                  Venda concluída!
+                {/* Icon */}
+                <div
+                  className="success-fadein flex items-center justify-center rounded-full"
+                  style={{ width: 56, height: 56, background: '#E1F5EE', fontSize: 26 }}
+                  aria-hidden
+                >
+                  ✅
+                </div>
+
+                <p
+                  className="mt-3"
+                  style={{ fontSize: 17, fontWeight: 700, color: '#1A2620' }}
+                >
+                  Venda registrada
                 </p>
+                <p style={{ fontSize: 13, color: '#9EB5AD', marginTop: 2 }}>
+                  {saleTime}
+                </p>
+                <p
+                  className="tabular-nums"
+                  style={{ fontSize: 32, fontWeight: 800, color: '#1D9E75', margin: '12px 0' }}
+                >
+                  {formatBRL(total)}
+                </p>
+
+                {lastSaleWarnings && lastSaleWarnings.length > 0 && (
+                  <div 
+                    className="w-full mb-4 rounded-xl border p-3.5 text-left text-xs leading-relaxed animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    style={{ background: '#FFFBEB', borderColor: '#FDE68A', color: '#92400E' }}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold mb-1.5" style={{ color: '#B45309' }}>
+                      <span>⚠️</span> Estoque de Insumos Insuficiente
+                    </div>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {lastSaleWarnings.map((warning, idx) => (
+                        <li key={idx} className="font-medium">{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={closeCheckout}
+                  className="w-full flex items-center justify-center rounded-[12px] transition-all active:scale-[0.97]"
+                  style={{
+                    height: 50, background: '#1D9E75', color: '#fff',
+                    fontSize: 16, fontWeight: 700,
+                  }}
+                >
+                  Nova venda
+                </button>
+                <button
+                  type="button"
+                  onClick={closeCheckout}
+                  className="w-full mt-2 transition-colors"
+                  style={{ fontSize: 13, color: '#9EB5AD', fontWeight: 500, paddingTop: 8 }}
+                >
+                  Ver no financeiro
+                </button>
               </div>
             )}
 
+            {/* ── Select method ── */}
             {step === 'select' && (
               <>
-                <p className="mb-2 text-muted-foreground">Total a receber</p>
-                <p className="mb-8 text-5xl font-bold text-foreground tabular-nums">
+                <p
+                  className="mb-1 text-center"
+                  style={{ fontSize: 13, color: '#9EB5AD' }}
+                >
+                  Total a receber
+                </p>
+                <p
+                  className="mb-7 text-center tabular-nums"
+                  style={{ fontSize: 44, fontWeight: 800, color: '#1A2620' }}
+                >
                   {formatBRL(total)}
                 </p>
 
@@ -78,57 +201,68 @@ export function CheckoutModal() {
                   <button
                     type="button"
                     onClick={() => setStep('dinheiro')}
-                    className="flex h-16 items-center justify-center gap-3 rounded-xl border-2 bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 text-lg font-bold transition-transform active:scale-95"
+                    className="flex h-16 items-center justify-center gap-3 rounded-xl border-2 text-lg font-bold transition-transform active:scale-95"
+                    style={{ background: '#F0FAF6', borderColor: '#A7DFC9', color: '#0F6E56' }}
                   >
-                    <span className="text-2xl" aria-hidden>💵</span> Dinheiro
+                    <span aria-hidden className="text-2xl">💵</span> Dinheiro
                   </button>
                   <button
                     type="button"
                     onClick={() => setStep('cartao')}
-                    className="flex h-16 items-center justify-center gap-3 rounded-xl border-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 text-lg font-bold transition-transform active:scale-95"
+                    className="flex h-16 items-center justify-center gap-3 rounded-xl border-2 text-lg font-bold transition-transform active:scale-95"
+                    style={{ background: '#F0FAF6', borderColor: '#A7DFC9', color: '#0F6E56' }}
                   >
-                    <span className="text-2xl" aria-hidden>💳</span> Cartão
+                    <span aria-hidden className="text-2xl">💳</span> Cartão
                   </button>
                   <button
                     type="button"
                     onClick={() => pay('pix')}
-                    className="flex h-16 items-center justify-center gap-3 rounded-xl border-2 bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100 text-lg font-bold transition-transform active:scale-95"
+                    className="flex h-16 items-center justify-center gap-3 rounded-xl border-2 text-lg font-bold transition-transform active:scale-95"
+                    style={{ background: '#F0FAF6', borderColor: '#A7DFC9', color: '#0F6E56' }}
                   >
-                    <span className="text-2xl" aria-hidden>🟢</span> Pix
+                    <span aria-hidden className="text-2xl">🟢</span> Pix
                   </button>
                 </div>
 
                 <button
                   type="button"
                   onClick={closeCheckout}
-                  className="mt-6 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  className="mt-5 text-sm font-semibold transition-colors"
+                  style={{ color: '#9EB5AD' }}
                 >
                   Cancelar
                 </button>
               </>
             )}
 
+            {/* ── Cartão ── */}
             {step === 'cartao' && (
               <div className="animate-in fade-in slide-in-from-right-4">
-                <div className="flex items-center gap-4 mb-6">
-                  <button onClick={() => setStep('select')} className="rounded-full p-2 bg-secondary text-foreground hover:bg-border">
+                <div className="flex items-center gap-3 mb-6">
+                  <button
+                    type="button"
+                    onClick={() => setStep('select')}
+                    className="rounded-full p-2 transition-colors"
+                    style={{ background: '#F0FAF6', color: '#1A2620' }}
+                  >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
-                  <h3 className="text-xl font-bold">Tipo de Cartão</h3>
+                  <h3 className="text-xl font-bold" style={{ color: '#1A2620' }}>Tipo de Cartão</h3>
                 </div>
-
                 <div className="grid grid-cols-2 gap-3 mb-6">
                   <button
                     type="button"
                     onClick={() => pay('cartao_credito')}
-                    className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl border-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 font-bold transition-transform active:scale-95"
+                    className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl border-2 font-bold transition-transform active:scale-95"
+                    style={{ background: '#F0FAF6', borderColor: '#A7DFC9', color: '#0F6E56' }}
                   >
                     <CreditCard className="h-6 w-6" /> Crédito
                   </button>
                   <button
                     type="button"
                     onClick={() => pay('cartao_debito')}
-                    className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl border-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold transition-transform active:scale-95"
+                    className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl border-2 font-bold transition-transform active:scale-95"
+                    style={{ background: '#F0FAF6', borderColor: '#A7DFC9', color: '#0F6E56' }}
                   >
                     <CreditCard className="h-6 w-6" /> Débito
                   </button>
@@ -136,39 +270,57 @@ export function CheckoutModal() {
               </div>
             )}
 
+            {/* ── Dinheiro ── */}
             {step === 'dinheiro' && (
               <div className="animate-in fade-in slide-in-from-right-4 text-left">
-                <div className="flex items-center gap-4 mb-6">
-                  <button onClick={() => setStep('select')} className="rounded-full p-2 bg-secondary text-foreground hover:bg-border">
+                <div className="flex items-center gap-3 mb-5">
+                  <button
+                    type="button"
+                    onClick={() => setStep('select')}
+                    className="rounded-full p-2 transition-colors"
+                    style={{ background: '#F0FAF6', color: '#1A2620' }}
+                  >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
-                  <h3 className="text-xl font-bold">Pagamento em Dinheiro</h3>
+                  <h3 className="text-xl font-bold" style={{ color: '#1A2620' }}>
+                    Pagamento em Dinheiro
+                  </h3>
                 </div>
 
-                <div className="mb-4 rounded-xl bg-secondary/50 p-4">
+                <div
+                  className="mb-4 rounded-xl p-4"
+                  style={{ background: '#FAFCFB', border: '0.5px solid #E8EFEC' }}
+                >
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-muted-foreground">Total da Venda</span>
-                    <span className="font-bold">{formatBRL(total)}</span>
+                    <span className="text-sm" style={{ color: '#9EB5AD' }}>Total da Venda</span>
+                    <span className="font-bold" style={{ color: '#1A2620' }}>{formatBRL(total)}</span>
                   </div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-muted-foreground">Valor Recebido</span>
-                    <span className="font-bold text-emerald-600">{formatBRL(received)}</span>
+                    <span className="text-sm" style={{ color: '#9EB5AD' }}>Valor Recebido</span>
+                    <span className="font-bold" style={{ color: '#1D9E75' }}>{formatBRL(received)}</span>
                   </div>
-                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-border">
-                    <span className="text-sm font-semibold text-foreground">Troco</span>
-                    <span className={`text-lg font-bold ${change >= 0 ? 'text-primary' : 'text-danger'}`}>
+                  <div
+                    className="flex justify-between items-center mt-3 pt-3"
+                    style={{ borderTop: '0.5px solid #E2E8E5' }}
+                  >
+                    <span className="text-sm font-semibold" style={{ color: '#1A2620' }}>Troco</span>
+                    <span
+                      className="text-lg font-bold tabular-nums"
+                      style={{ color: change >= 0 ? '#1D9E75' : '#DC2626' }}
+                    >
                       {change >= 0 ? formatBRL(change) : 'Falta dinheiro'}
                     </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 mb-6">
+                <div className="grid grid-cols-3 gap-2 mb-5">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'].map((key) => (
                     <button
                       key={key}
                       type="button"
                       onClick={() => handleNumberClick(key)}
-                      className="flex h-12 items-center justify-center rounded-xl bg-secondary text-xl font-semibold text-foreground transition-transform active:scale-90"
+                      className="flex h-12 items-center justify-center rounded-xl text-xl font-semibold transition-transform active:scale-90"
+                      style={{ background: '#FAFCFB', border: '0.5px solid #E8EFEC', color: '#1A2620' }}
                     >
                       {key === 'back' ? '⌫' : key}
                     </button>
@@ -179,12 +331,14 @@ export function CheckoutModal() {
                   type="button"
                   onClick={() => pay('dinheiro')}
                   disabled={change < 0}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-4 text-lg font-bold text-primary-foreground transition-transform active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                  className="w-full flex items-center justify-center gap-2 rounded-xl py-4 text-lg font-bold transition-transform active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                  style={{ background: '#1D9E75', color: '#fff' }}
                 >
                   <span aria-hidden>💵</span> Confirmar Venda
                 </button>
               </div>
             )}
+
           </div>
         </Drawer.Content>
       </Drawer.Portal>

@@ -9,16 +9,16 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'BakeryFlow — PDV para Padarias',
+  title: 'Panificadora Cauã — PDV',
   description:
-    'Sistema de Ponto de Venda mobile-first para padarias. Rápido, simples e direto ao caixa.',
+    'Sistema de Ponto de Venda da Panificadora Cauã. Rápido, simples e direto ao caixa.',
   generator: 'v0.app',
   manifest: '/manifest.json',
 }
 
 export const viewport: Viewport = {
   colorScheme: 'light',
-  themeColor: '#F5F7FB',
+  themeColor: '#F7F9F7',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

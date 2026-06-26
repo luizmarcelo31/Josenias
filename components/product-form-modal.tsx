@@ -12,6 +12,7 @@ import {
   getMargin,
   type Product,
   type Unit,
+  type RecipeItem,
 } from '@/lib/types'
 import { useStore } from '@/lib/store'
 
@@ -25,6 +26,7 @@ export function ProductFormModal({
   editing: Product | null
 }) {
   const categories = useStore((s) => s.categories)
+  const materials = useStore((s) => s.materials)
   const addProduct = useStore((s) => s.addProduct)
   const updateProduct = useStore((s) => s.updateProduct)
 
@@ -42,6 +44,11 @@ export function ProductFormModal({
   const [imageUrl, setImageUrl] = useState<string | undefined>()
   const [error, setError] = useState('')
 
+  const [recipe, setRecipe] = useState<RecipeItem[]>([])
+  const [recipeOpen, setRecipeOpen] = useState(false)
+  const [selectedMaterialId, setSelectedMaterialId] = useState('')
+  const [materialQty, setMaterialQty] = useState('')
+
   useEffect(() => {
     if (open) {
       setName(editing?.name ?? '')
@@ -56,9 +63,13 @@ export function ProductFormModal({
       setImageUrl(editing?.imageUrl)
       setIsFrequent(editing?.isFrequent ?? false)
       setIsActive(editing?.isActive ?? true)
+      setRecipe(editing?.recipe ?? [])
+      setRecipeOpen(!!(editing?.recipe && editing.recipe.length > 0))
+      setSelectedMaterialId(materials[0]?.id ?? '')
+      setMaterialQty('')
       setError('')
     }
-  }, [open, editing, categories])
+  }, [open, editing, categories, materials])
 
   const costNum = Number.parseFloat(cost) || 0
   const saleNum = Number.parseFloat(sale) || 0
@@ -82,14 +93,15 @@ export function ProductFormModal({
       categoryId,
       costPrice: costNum,
       salePrice: saleNum,
-      stockQuantity: Number.parseInt(stock, 10) || 0,
-      minStockQuantity: Number.parseInt(minStock, 10) || 0,
+      stockQuantity: 0,
+      minStockQuantity: 0,
       unit,
       sku: sku.trim(),
       emoji,
       imageUrl,
       isFrequent,
       isActive,
+      recipe: recipe.filter(r => materials.some(m => m.id === r.materialId)),
     }
     if (editing) {
       updateProduct(editing.id, data)
@@ -104,6 +116,34 @@ export function ProductFormModal({
   const inputCls =
     'w-full rounded-lg border border-border bg-card px-3 py-2.5 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/20'
   const labelCls = 'mb-1.5 block text-sm font-medium text-foreground'
+
+  const recipeCost = recipe.reduce((sum, item) => {
+    const mat = materials.find((m) => m.id === item.materialId)
+    return sum + (mat ? item.quantity * mat.costPrice : 0)
+  }, 0)
+
+  function handleAddIngredient() {
+    if (!selectedMaterialId) return
+    const qty = parseFloat(materialQty)
+    if (isNaN(qty) || qty <= 0) {
+      toast.error('Informe uma quantidade válida')
+      return
+    }
+    if (recipe.some((r) => r.materialId === selectedMaterialId)) {
+      toast.error('Este insumo já está na ficha')
+      return
+    }
+    const newIngredient: RecipeItem = {
+      materialId: selectedMaterialId,
+      quantity: qty,
+    }
+    setRecipe([...recipe, newIngredient])
+    setMaterialQty('')
+  }
+
+  function handleRemoveIngredient(materialId: string) {
+    setRecipe(recipe.filter((r) => r.materialId !== materialId))
+  }
 
   return (
     <Modal
@@ -220,53 +260,23 @@ export function ProductFormModal({
           </span>
         </div>
 
-        {/* Estoque */}
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label htmlFor="prod-stock" className={labelCls}>
-              Estoque
-            </label>
-            <input
-              id="prod-stock"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={stock}
-              onChange={(e) => setStock(e.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label htmlFor="prod-min" className={labelCls}>
-              Mínimo
-            </label>
-            <input
-              id="prod-min"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={minStock}
-              onChange={(e) => setMinStock(e.target.value)}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label htmlFor="prod-unit" className={labelCls}>
-              Unidade
-            </label>
-            <select
-              id="prod-unit"
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as Unit)}
-              className={inputCls}
-            >
-              {UNITS.map((u) => (
-                <option key={u.value} value={u.value}>
-                  {u.value}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Unidade */}
+        <div>
+          <label htmlFor="prod-unit" className={labelCls}>
+            Unidade de venda <span className="text-danger">*</span>
+          </label>
+          <select
+            id="prod-unit"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as Unit)}
+            className={inputCls}
+          >
+            {UNITS.map((u) => (
+              <option key={u.value} value={u.value}>
+                {u.value === 'un' ? 'Unidade (un)' : u.value === 'kg' ? 'Quilo (kg)' : 'Litro (L)'}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* SKU */}
@@ -281,6 +291,118 @@ export function ProductFormModal({
             placeholder="Opcional"
             className={inputCls}
           />
+        </div>
+
+        {/* Ficha Técnica Collapsible */}
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setRecipeOpen(!recipeOpen)}
+            className="flex w-full items-center justify-between px-3.5 py-3 text-sm font-semibold text-foreground hover:bg-secondary/40 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              📝 Ficha Técnica (Opcional)
+            </span>
+            <span className="text-xs text-muted-foreground font-bold">
+              {recipeOpen ? '▲ Fechar' : '▼ Abrir'}
+            </span>
+          </button>
+          
+          {recipeOpen && (
+            <div className="border-t border-border p-3.5 flex flex-col gap-3.5 bg-slate-50/30">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Defina os insumos consumidos por cada 1 unidade ou kg deste produto vendido. O estoque desses insumos será deduzido automaticamente.
+              </p>
+
+              {materials.length === 0 ? (
+                <p className="text-xs text-warning font-medium py-1">
+                  Nenhum insumo cadastrado. Cadastre insumos na aba Estoque primeiro.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 min-w-0">
+                      <label htmlFor="recipe-mat" className="mb-1 block text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Insumo
+                      </label>
+                      <select
+                        id="recipe-mat"
+                        value={selectedMaterialId}
+                        onChange={(e) => setSelectedMaterialId(e.target.value)}
+                        className={inputCls}
+                      >
+                        {materials.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.unit})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-24 shrink-0">
+                      <label htmlFor="recipe-qty" className="mb-1 block text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Qtd ({materials.find(m => m.id === selectedMaterialId)?.unit || ''})
+                      </label>
+                      <input
+                        id="recipe-qty"
+                        type="number"
+                        inputMode="decimal"
+                        min="0.001"
+                        step="0.001"
+                        placeholder="0.00"
+                        value={materialQty}
+                        onChange={(e) => setMaterialQty(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddIngredient}
+                      className="rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white transition-transform active:scale-95 hover:bg-primary/95"
+                    >
+                      Incluir
+                    </button>
+                  </div>
+
+                  {recipe.length > 0 && (
+                    <div className="mt-1 flex flex-col gap-2 border-t border-border pt-3 max-h-48 overflow-y-auto no-scrollbar">
+                      {recipe.map((item) => {
+                        const mat = materials.find((m) => m.id === item.materialId)
+                        if (!mat) return null
+                        return (
+                          <div
+                            key={item.materialId}
+                            className="flex items-center justify-between rounded-xl border border-border bg-white px-3 py-2.5 shadow-sm text-sm"
+                          >
+                            <span className="font-semibold text-foreground">{mat.name}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="font-bold text-primary tabular-nums">
+                                {item.quantity} {mat.unit}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveIngredient(item.materialId)}
+                                className="rounded-full hover:bg-red-50 text-muted-foreground hover:text-danger p-1 transition-colors"
+                                title="Remover"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-2 flex items-center justify-between rounded-xl bg-secondary px-3.5 py-3 text-sm">
+                    <span className="font-medium text-muted-foreground">Custo estimado de insumos:</span>
+                    <span className="font-extrabold text-foreground tabular-nums">
+                      {formatBRL(recipeCost)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Imagem / Ícone */}

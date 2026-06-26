@@ -77,7 +77,6 @@ export function CartSheet() {
                   </span>
                   <button
                     type="button"
-                    disabled={item.quantity >= item.stockQuantity}
                     onClick={() => {
                       vibrate(10)
                       updateCartQty(item.productId, item.quantity + 1)

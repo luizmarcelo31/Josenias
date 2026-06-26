@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import {
   Boxes,
+  ChefHat,
   DollarSign,
   PackagePlus,
   Pencil,
@@ -13,13 +14,12 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductFormModal } from '@/components/product-form-modal'
-import { PriceEditModal, StockAdjustModal } from '@/components/quick-edit-modals'
+import { PriceEditModal } from '@/components/quick-edit-modals'
+import { ProductionModal } from '@/components/production-modal'
 import { ConfirmDialog } from '@/components/modal'
 import {
-  STOCK_STATUS_META,
   formatBRL,
   getMargin,
-  getStockStatus,
   type Product,
 } from '@/lib/types'
 import { useStore } from '@/lib/store'
@@ -38,8 +38,8 @@ export function ProductsScreen() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [priceProduct, setPriceProduct] = useState<Product | null>(null)
-  const [stockProduct, setStockProduct] = useState<Product | null>(null)
   const [toDelete, setToDelete] = useState<Product | null>(null)
+  const [productionProduct, setProductionProduct] = useState<Product | null>(null)
 
   const categoryMap = useMemo(() => {
     const map: Record<string, (typeof categories)[number]> = {}
@@ -115,8 +115,6 @@ export function ProductsScreen() {
         <div className="flex flex-col gap-2" ref={listRef}>
           {filtered.map((p) => {
             const cat = categoryMap[p.categoryId]
-            const status = getStockStatus(p)
-            const meta = STOCK_STATUS_META[status]
             const margin = getMargin(p.costPrice, p.salePrice)
             return (
               <div
@@ -157,11 +155,6 @@ export function ProductsScreen() {
                           {cat.name}
                         </span>
                       )}
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.bg} ${meta.color}`}
-                      >
-                        {p.stockQuantity} {p.unit} · {meta.label}
-                      </span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -182,11 +175,6 @@ export function ProductsScreen() {
                     onClick={() => setPriceProduct(p)}
                   />
                   <ActionButton
-                    icon={Boxes}
-                    label="Estoque"
-                    onClick={() => setStockProduct(p)}
-                  />
-                  <ActionButton
                     icon={Pencil}
                     label="Editar"
                     onClick={() => {
@@ -202,6 +190,13 @@ export function ProductsScreen() {
                       toggleProductActive(p.id)
                     }}
                   />
+                  {p.recipe && p.recipe.length > 0 && (
+                    <ActionButton
+                      icon={ChefHat}
+                      label="Fabricar"
+                      onClick={() => setProductionProduct(p)}
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -241,9 +236,9 @@ export function ProductsScreen() {
         product={priceProduct}
         onClose={() => setPriceProduct(null)}
       />
-      <StockAdjustModal
-        product={stockProduct}
-        onClose={() => setStockProduct(null)}
+      <ProductionModal
+        product={productionProduct}
+        onClose={() => setProductionProduct(null)}
       />
       <ConfirmDialog
         open={!!toDelete}

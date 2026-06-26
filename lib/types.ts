@@ -10,40 +10,74 @@ export type Category = {
   updatedAt: number
 }
 
+export type RecipeItem = {
+  materialId: string
+  quantity: number // quantity per 1 unit of product
+}
+
 export type Product = {
   id: string
   name: string
   categoryId: string
   costPrice: number
   salePrice: number
-  stockQuantity: number
-  minStockQuantity: number
+  stockQuantity?: number // @legacy - ignorado no fluxo de vendas
+  minStockQuantity?: number // @legacy
   unit: Unit
   sku: string
   emoji: string
   imageUrl?: string
   isFrequent: boolean
   isActive: boolean
+  recipe?: RecipeItem[]
   createdAt: number
   updatedAt: number
 }
 
-export type MovementType =
-  | 'entrada_venda'
-  | 'entrada_compra'
-  | 'saida_venda'
-  | 'perda'
-  | 'ajuste'
+export type MaterialUnit = 'kg' | 'g' | 'L' | 'ml' | 'un' | 'cx' | 'pct'
+
+export type Material = {
+  id: string
+  name: string
+  unit: MaterialUnit
+  stockQuantity: number
+  minStockQuantity: number
+  costPrice: number
+  supplier?: string
+  expirationDate?: string // ISO string format YYYY-MM-DD
+  linkedProducts?: string[] // reservado para ficha técnica futura
+  createdAt: number
+  updatedAt: number
+}
+
+export type MovementType = 'entrada' | 'saida' | 'perda' | 'producao' | 'estorno_producao'
+
+export type ProductionSnapshotItem = {
+  materialId: string
+  materialName: string
+  amountPerUnit: number
+  totalAmount: number
+  unit: MaterialUnit
+}
+
+export type ProductionSnapshot = {
+  productId: string
+  productName: string
+  quantity: number
+  recipeUsed: ProductionSnapshotItem[]
+  producedAt: number // timestamp
+}
 
 export type StockMovement = {
   id: string
-  productId: string
+  materialId: string
   type: MovementType
   quantity: number
-  previousQuantity: number
-  newQuantity: number
-  reason: string
-  observation: string
+  note?: string
+  saleId?: string // reference to sale
+  productionId?: string // reference to a production batch
+  productionSnapshot?: ProductionSnapshot // snapshot of recipe at production time
+  reversedMovementId?: string // for estorno_producao, references the original producao
   createdAt: number
 }
 
@@ -109,10 +143,10 @@ export function getMargin(cost: number, sale: number) {
   return ((sale - cost) / sale) * 100
 }
 
-export function getStockStatus(p: Product): StockStatus {
-  if (p.stockQuantity <= 0) return 'esgotado'
-  if (p.stockQuantity <= p.minStockQuantity * 0.5) return 'critico'
-  if (p.stockQuantity <= p.minStockQuantity) return 'baixo'
+export function getMaterialStockStatus(m: Material): StockStatus {
+  if (m.stockQuantity <= 0) return 'esgotado'
+  if (m.stockQuantity <= m.minStockQuantity * 0.5) return 'critico'
+  if (m.stockQuantity <= m.minStockQuantity) return 'baixo'
   return 'ok'
 }
 

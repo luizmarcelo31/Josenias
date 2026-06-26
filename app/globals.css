@@ -36,34 +36,35 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
 
-  --shadow-card: 0 1px 3px 0 rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.04);
+  --shadow-card: 0 1px 3px 0 rgb(29 158 117 / 0.06), 0 1px 2px -1px rgb(29 158 117 / 0.04);
 }
 
 :root {
   color-scheme: light;
-  /* TailAdmin palette */
-  --background: #f5f7fb;
-  --foreground: #1f2937;
+
+  /* Panificadora Cauã – Green Brand Palette */
+  --background: #F7F9F7;
+  --foreground: #1A2620;
   --card: #ffffff;
-  --card-foreground: #1f2937;
+  --card-foreground: #1A2620;
   --popover: #ffffff;
-  --popover-foreground: #1f2937;
-  --primary: #3c50e0;
+  --popover-foreground: #1A2620;
+  --primary: #1D9E75;
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #1f2937;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #eef1ff;
-  --accent-foreground: #3c50e0;
-  --destructive: #ef4444;
+  --secondary: #F0FAF6;
+  --secondary-foreground: #1A2620;
+  --muted: #FAFCFB;
+  --muted-foreground: #9EB5AD;
+  --accent: #E1F5EE;
+  --accent-foreground: #0F6E56;
+  --destructive: #DC2626;
   --destructive-foreground: #ffffff;
-  --success: #10b981;
+  --success: #1D9E75;
   --success-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #3c50e0;
-  --radius: 0.625rem;
+  --border: #E2E8E5;
+  --input: #E2E8E5;
+  --ring: #1D9E75;
+  --radius: 0.75rem;
 }
 
 @layer base {
@@ -86,4 +87,13 @@
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Checkout success icon fade-in */
+@keyframes success-fadein {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.success-fadein {
+  animation: success-fadein 300ms ease forwards;
 }

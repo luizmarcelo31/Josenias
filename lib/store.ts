@@ -6,8 +6,11 @@ import type {
   MovementType,
   PaymentMethod,
   Product,
+  Material,
   Sale,
   StockMovement,
+  ProductionSnapshot,
+  ProductionSnapshotItem,
 } from './types'
 import { seedCategories, seedProducts } from './seed'
 
@@ -29,7 +32,6 @@ export type CartItem = {
   emoji: string
   unitPrice: number
   quantity: number
-  stockQuantity: number
 }
 
 function uid() {
@@ -40,6 +42,7 @@ type StoreState = {
   // Data
   categories: Category[]
   products: Product[]
+  materials: Material[]
   movements: StockMovement[]
   sales: Sale[]
 
@@ -56,13 +59,17 @@ type StoreState = {
   deleteProduct: (id: string) => void
   toggleProductActive: (id: string) => void
 
+  // Materials CRUD
+  addMaterial: (data: Omit<Material, 'id' | 'createdAt' | 'updatedAt'>) => void
+  updateMaterial: (id: string, data: Partial<Material>) => void
+  deleteMaterial: (id: string) => void
+
   // Stock
-  adjustStock: (
-    productId: string,
+  adjustMaterialStock: (
+    materialId: string,
     type: MovementType,
     quantity: number,
-    reason: string,
-    observation: string,
+    note?: string,
   ) => void
 
   // Cart
@@ -92,7 +99,18 @@ type StoreState = {
   closeCheckout: () => void
 
   // Sales
+  lastSaleWarnings: string[]
   completeSale: (method: PaymentMethod) => void
+  clearSales: () => void
+
+  // Production
+  produceProduct: (
+    productId: string,
+    quantity: number,
+  ) => { success: boolean; warnings: string[]; errors: string[] }
+  reverseProduction: (
+    productionId: string,
+  ) => { success: boolean; error?: string }
 }
 
 export const useStore = create<StoreState>()(
@@ -100,8 +118,10 @@ export const useStore = create<StoreState>()(
     (set, get) => ({
       categories: seedCategories,
       products: seedProducts,
+      materials: [],
       movements: [],
       sales: [],
+      lastSaleWarnings: [],
 
       addCategory: (data) =>
         set((state) => {
@@ -154,33 +174,49 @@ export const useStore = create<StoreState>()(
           ),
         })),
 
-      adjustStock: (productId, type, quantity, reason, observation) =>
+      addMaterial: (data) =>
         set((state) => {
-          const product = state.products.find((p) => p.id === productId)
-          if (!product) return state
-          const previous = product.stockQuantity
+          const ts = Date.now()
+          return {
+            materials: [
+              ...state.materials,
+              { ...data, id: uid(), createdAt: ts, updatedAt: ts },
+            ],
+          }
+        }),
+      updateMaterial: (id, data) =>
+        set((state) => ({
+          materials: state.materials.map((m) =>
+            m.id === id ? { ...m, ...data, updatedAt: Date.now() } : m,
+          ),
+        })),
+      deleteMaterial: (id) =>
+        set((state) => ({
+          materials: state.materials.filter((m) => m.id !== id),
+        })),
+
+      adjustMaterialStock: (materialId, type, quantity, note) =>
+        set((state) => {
+          const material = state.materials.find((m) => m.id === materialId)
+          if (!material) return state
+          const previous = material.stockQuantity
           let next = previous
-          if (type === 'ajuste') next = quantity
-          else if (type === 'entrada_compra' || type === 'entrada_venda')
-            next = previous + quantity
+          if (type === 'entrada') next = previous + quantity
           else next = previous - quantity
           next = Math.max(0, next)
           const movement: StockMovement = {
             id: uid(),
-            productId,
+            materialId,
             type,
             quantity,
-            previousQuantity: previous,
-            newQuantity: next,
-            reason,
-            observation,
+            note,
             createdAt: Date.now(),
           }
           return {
-            products: state.products.map((p) =>
-              p.id === productId
-                ? { ...p, stockQuantity: next, updatedAt: Date.now() }
-                : p,
+            materials: state.materials.map((m) =>
+              m.id === materialId
+                ? { ...m, stockQuantity: next, updatedAt: Date.now() }
+                : m,
             ),
             movements: [movement, ...state.movements],
           }
@@ -192,17 +228,16 @@ export const useStore = create<StoreState>()(
           if (quantity <= 0) return state
           const existing = state.cart.find((i) => i.productId === product.id)
           const currentQty = existing ? existing.quantity : 0
-          const finalQty = Math.min(currentQty + quantity, product.stockQuantity)
-          
-          if (finalQty <= 0) return state
+          const finalQty = currentQty + quantity
 
           if (existing) {
             return {
               cart: state.cart.map((i) =>
                 i.productId === product.id
-                  ? { ...i, quantity: finalQty, stockQuantity: product.stockQuantity }
+                  ? { ...i, quantity: finalQty }
                   : i,
               ),
+              lastSaleWarnings: [],
             }
           }
           return {
@@ -214,9 +249,9 @@ export const useStore = create<StoreState>()(
                 emoji: product.emoji,
                 unitPrice: product.salePrice,
                 quantity: finalQty,
-                stockQuantity: product.stockQuantity,
               },
             ],
+            lastSaleWarnings: [],
           }
         }),
       updateCartQty: (productId, quantity) =>
@@ -224,17 +259,9 @@ export const useStore = create<StoreState>()(
           if (quantity <= 0) {
             return { cart: state.cart.filter((i) => i.productId !== productId) }
           }
-          const product = state.products.find((p) => p.id === productId)
-          if (!product) return state
-
-          const finalQty = Math.min(quantity, product.stockQuantity)
-          if (finalQty <= 0) {
-            return { cart: state.cart.filter((i) => i.productId !== productId) }
-          }
-
           return {
             cart: state.cart.map((i) =>
-              i.productId === productId ? { ...i, quantity: finalQty, stockQuantity: product.stockQuantity } : i,
+              i.productId === productId ? { ...i, quantity } : i,
             ),
           }
         }),
@@ -242,7 +269,7 @@ export const useStore = create<StoreState>()(
         set((state) => ({
           cart: state.cart.filter((i) => i.productId !== productId),
         })),
-      clearCart: () => set({ cart: [] }),
+      clearCart: () => set({ cart: [], lastSaleWarnings: [] }),
 
       numpadProduct: null,
       numpadValue: '0',
@@ -253,6 +280,7 @@ export const useStore = create<StoreState>()(
           return {
             numpadProduct: product,
             numpadValue: last ? String(last) : '1',
+            lastSaleWarnings: [],
           }
         }),
       closeNumpad: () => set({ numpadProduct: null, numpadValue: '0' }),
@@ -292,14 +320,15 @@ export const useStore = create<StoreState>()(
       closeCheckout: () => set({ isCheckoutOpen: false }),
 
       completeSale: (method) => {
-        const { cart, products } = get()
+        const { cart } = get()
         if (cart.length === 0) return
         const total = cart.reduce(
           (sum, i) => sum + i.unitPrice * i.quantity,
           0,
         )
+        const saleId = uid()
         const sale: Sale = {
-          id: uid(),
+          id: saleId,
           items: cart.map((i) => ({
             productId: i.productId,
             name: i.name,
@@ -312,23 +341,155 @@ export const useStore = create<StoreState>()(
           method,
           createdAt: Date.now(),
         }
-        // Deduct stock
-        const updatedProducts = products.map((p) => {
-          const item = cart.find((i) => i.productId === p.id)
-          if (!item) return p
-          return {
-            ...p,
-            stockQuantity: Math.max(0, p.stockQuantity - item.quantity),
-            updatedAt: Date.now(),
-          }
-        })
+
         set((state) => ({
           sales: [sale, ...state.sales],
-          products: updatedProducts,
           cart: [],
+          lastSaleWarnings: [],
           isCheckoutOpen: false,
           isCartOpen: false,
         }))
+      },
+
+      clearSales: () => set({ sales: [] }),
+
+      produceProduct: (productId, quantity) => {
+        const { products, materials } = get()
+        const product = products.find((p) => p.id === productId)
+
+        if (!product) return { success: false, warnings: [], errors: ['Produto não encontrado.'] }
+        if (!product.recipe || product.recipe.length === 0)
+          return { success: false, warnings: [], errors: ['Este produto não possui ficha técnica cadastrada.'] }
+        if (quantity <= 0)
+          return { success: false, warnings: [], errors: ['Quantidade deve ser maior que zero.'] }
+
+        const errors: string[] = []
+        const warnings: string[] = []
+
+        // Pre-validate all ingredients before any mutation
+        for (const recipeItem of product.recipe) {
+          const mat = materials.find((m) => m.id === recipeItem.materialId)
+          if (!mat) {
+            errors.push(`Insumo não encontrado na ficha técnica.`)
+            continue
+          }
+          const needed = recipeItem.quantity * quantity
+          const afterDeduction = mat.stockQuantity - needed
+          if (afterDeduction < 0) {
+            errors.push(`Estoque insuficiente de ${mat.name}: precisa ${needed.toFixed(3)} ${mat.unit}, tem ${mat.stockQuantity} ${mat.unit}.`)
+          } else if (afterDeduction < mat.minStockQuantity) {
+            warnings.push(`${mat.name} ficará abaixo do mínimo (${afterDeduction.toFixed(3)}/${mat.minStockQuantity} ${mat.unit}).`)
+          }
+        }
+
+        // Block if there are errors
+        if (errors.length > 0) return { success: false, warnings, errors }
+
+        // Build production snapshot
+        const ts = Date.now()
+        const productionId = uid()
+        const snapshotItems: ProductionSnapshotItem[] = product.recipe
+          .map((ri) => {
+            const mat = materials.find((m) => m.id === ri.materialId)
+            if (!mat) return null
+            return {
+              materialId: ri.materialId,
+              materialName: mat.name,
+              amountPerUnit: ri.quantity,
+              totalAmount: Math.round(ri.quantity * quantity * 1000) / 1000,
+              unit: mat.unit,
+            } as ProductionSnapshotItem
+          })
+          .filter((x): x is ProductionSnapshotItem => x !== null)
+
+        const snapshot: ProductionSnapshot = {
+          productId,
+          productName: product.name,
+          quantity,
+          recipeUsed: snapshotItems,
+          producedAt: ts,
+        }
+
+        // Apply deductions
+        const updatedMaterials = [...materials]
+        const newMovements: StockMovement[] = []
+
+        for (const item of snapshotItems) {
+          const matIndex = updatedMaterials.findIndex((m) => m.id === item.materialId)
+          if (matIndex === -1) continue
+          const mat = updatedMaterials[matIndex]
+          const nextStock = Math.round((mat.stockQuantity - item.totalAmount) * 1000) / 1000
+
+          updatedMaterials[matIndex] = { ...mat, stockQuantity: nextStock, updatedAt: ts }
+          newMovements.push({
+            id: uid(),
+            materialId: item.materialId,
+            type: 'producao',
+            quantity: item.totalAmount,
+            note: `Produção: ${product.name} x${quantity}`,
+            productionId,
+            productionSnapshot: snapshot,
+            createdAt: ts,
+          })
+        }
+
+        set((state) => ({
+          materials: updatedMaterials,
+          movements: [...newMovements, ...state.movements],
+        }))
+
+        return { success: true, warnings, errors: [] }
+      },
+
+      reverseProduction: (productionId) => {
+        const { movements, materials } = get()
+        // Find all movements for this production batch
+        const productionMovements = movements.filter(
+          (m) => m.productionId === productionId && m.type === 'producao',
+        )
+
+        if (productionMovements.length === 0)
+          return { success: false, error: 'Produção não encontrada.' }
+
+        const firstMovement = productionMovements[0]
+        const THIRTY_MINUTES = 30 * 60 * 1000
+        if (Date.now() - firstMovement.createdAt > THIRTY_MINUTES)
+          return { success: false, error: 'O prazo de 30 minutos para estorno expirou.' }
+
+        // Check if already reversed
+        const alreadyReversed = movements.some(
+          (m) => m.type === 'estorno_producao' && m.reversedMovementId === productionId,
+        )
+        if (alreadyReversed)
+          return { success: false, error: 'Esta produção já foi estornada.' }
+
+        const ts = Date.now()
+        const updatedMaterials = [...materials]
+        const newMovements: StockMovement[] = []
+
+        for (const pm of productionMovements) {
+          const matIndex = updatedMaterials.findIndex((m) => m.id === pm.materialId)
+          if (matIndex === -1) continue
+          const mat = updatedMaterials[matIndex]
+          const nextStock = Math.round((mat.stockQuantity + pm.quantity) * 1000) / 1000
+          updatedMaterials[matIndex] = { ...mat, stockQuantity: nextStock, updatedAt: ts }
+          newMovements.push({
+            id: uid(),
+            materialId: pm.materialId,
+            type: 'estorno_producao',
+            quantity: pm.quantity,
+            note: `Estorno da produção ${productionId.slice(0, 6)}`,
+            reversedMovementId: productionId,
+            createdAt: ts,
+          })
+        }
+
+        set((state) => ({
+          materials: updatedMaterials,
+          movements: [...newMovements, ...state.movements],
+        }))
+
+        return { success: true }
       },
     }),
     {
@@ -337,9 +498,11 @@ export const useStore = create<StoreState>()(
       partialize: (state) => ({
         categories: state.categories,
         products: state.products,
+        materials: state.materials,
         movements: state.movements,
         sales: state.sales,
         lastQuantities: state.lastQuantities,
+        lastSaleWarnings: state.lastSaleWarnings,
       }),
     },
   ),

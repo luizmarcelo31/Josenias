@@ -22,7 +22,7 @@ export function BakeryApp() {
         <span className="text-xl" aria-hidden>
           🥖
         </span>
-        <h1 className="text-lg font-bold text-foreground">BakeryFlow</h1>
+        <h1 className="text-lg font-bold text-foreground">Panificadora Cauã</h1>
         <button
           type="button"
           onClick={() => setManaging((m) => !m)}

@@ -94,14 +94,12 @@ export function PdvScreen() {
         ) : (
           <div ref={gridRef} className="grid grid-cols-2 gap-3">
             {filtered.map((p) => {
-              const out = p.stockQuantity <= 0
               return (
                 <button
                   key={p.id}
                   type="button"
-                  disabled={out}
                   onClick={() => handleSelect(p)}
-                  className="flex flex-col rounded-xl border border-border bg-card p-3 text-left shadow-card transition-transform active:scale-[0.98] active:bg-secondary disabled:opacity-50"
+                  className="flex flex-col rounded-xl border border-border bg-card p-3 text-left shadow-card transition-transform active:scale-[0.98] active:bg-secondary"
                 >
                   <div className="relative mb-2 flex aspect-square items-center justify-center rounded-lg bg-secondary text-5xl overflow-hidden">
                     {p.imageUrl ? (
@@ -109,11 +107,6 @@ export function PdvScreen() {
                       <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
                     ) : (
                       <span aria-hidden>{p.emoji}</span>
-                    )}
-                    {out && (
-                      <span className="absolute bottom-1 rounded-full bg-danger px-2 py-0.5 text-[10px] font-bold text-white">
-                        Esgotado
-                      </span>
                     )}
                   </div>
                   <span className="truncate text-sm font-semibold text-foreground">
